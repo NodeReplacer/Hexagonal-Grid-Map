@@ -64,6 +64,30 @@ public class HexGrid : MonoBehaviour {
 		cell.coordinates = HexCoordinates.FromOffsetCoordinates(x, z);
 		cell.color = defaultColor;
 		
+		//connect the cell with the previous cell in the row (if x==0 then we're at the edge and no cell will be waiting for us
+		//at i - 1)
+		if (x > 0) {
+			cell.SetNeighbor(HexDirection.W, cells[i - 1]);
+		}
+		//Same as above but in the z direction so we need to find the correct cell.
+		if (z > 0) {
+			//The rows zigzag we are first dealing with even rows.
+			if ((z & 1) == 0) {
+				//So we are looking for the cell in the south east direction
+				cell.SetNeighbor(HexDirection.SE, cells[i - width]);
+				//Like with x above, once we hit the edge there will not be a cell to our bottom right.
+				if (x > 0) {
+					cell.SetNeighbor(HexDirection.SW, cells[i - width - 1]);
+				}
+			}
+			else {
+				cell.SetNeighbor(HexDirection.SW, cells[i - width]);
+				if (x < width - 1) {
+					cell.SetNeighbor(HexDirection.SE, cells[i - width + 1]);
+				}
+			}
+		}
+		
 		Text label = Instantiate<Text>(cellLabelPrefab);
 		label.rectTransform.SetParent(gridCanvas.transform, false);
 		label.rectTransform.anchoredPosition = new Vector2(position.x, position.z);
