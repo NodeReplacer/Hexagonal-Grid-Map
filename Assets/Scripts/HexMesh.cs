@@ -47,21 +47,27 @@ public class HexMesh : MonoBehaviour {
     
 	void Triangulate(HexDirection direction, HexCell cell) {
 		//Get the center of the currently considered cell
-        Vector3 center = cell.transform.localPosition;
+        Vector3 center = cell.Position; //We made a get property that just returns the transform.localPosition.
+		
 		Vector3 v1 = center + HexMetrics.GetFirstSolidCorner(direction);
 		Vector3 v2 = center + HexMetrics.GetSecondSolidCorner(direction);
 		
-		AddTriangle(center, v1, v2);
-		AddTriangleColor(cell.color);
+		EdgeVertices e = new EdgeVertices(v1,v2);
 		
+		TriangulateEdgeFan(center, e, cell.color);
+		
+		//We'll need to subdivide those edge connections so we're passing e1 and e2 to TriangulateConnection as well.
+		//This specializes it so now it only works with our brand of hexagon.
 		if (direction <= HexDirection.SE) {
-			TriangulateConnection(direction, cell, v1, v2);
+			TriangulateConnection(direction, cell, e);
 		}
 	}
 	
 	//We use a bridge to blend the colors. We need: The direction of the cell we are blending, the current cell, 
 	//and two vectors (the SolidCorner of the current cell)
-	void TriangulateConnection (HexDirection direction, HexCell cell, Vector3 v1, Vector3 v2) {
+	void TriangulateConnection (HexDirection direction, HexCell cell, EdgeVertices e1) {
+		//Some changes need to be made
+		//Where we first used v1, we use e1.v1 instead. Likewise, v2 becomes e1.v4, v3 becomes e2.v1, and v4 becomes e2.v4.
 		
 		HexCell neighbor = cell.GetNeighbor(direction); //Find the neighbor in the direction passed to us.
 		if (neighbor == null) {
@@ -70,22 +76,19 @@ public class HexMesh : MonoBehaviour {
 		
 		Vector3 bridge = HexMetrics.GetBridge(direction); //Get the bridge that will stretch between this cell and the
 		//neighbor cell.
-		Vector3 v3 = v1 + bridge;
-		Vector3 v4 = v2 + bridge;
-		v3.y = v4.y = neighbor.Elevation * HexMetrics.elevationStep; //We take our neighbour's elevation
-		//(keeping in mind that it is a unit that needs to be multiplied by each step) and attach the end of our bridge to
-		//the neighbouring cell.
+		bridge.y = neighbor.Position.y - cell.Position.y;
+		EdgeVertices e2 = new EdgeVertices(e1.v1 + bridge, e1.v4 + bridge);		
 		
 		//Whether we are actually creating an edge terrace.
 		if (cell.GetEdgeType(direction) == HexEdgeType.Slope) {
-			TriangulateEdgeTerraces(v1, v2, cell, v3, v4, neighbor);
+			TriangulateEdgeTerraces(e1, cell, e2, neighbor);
 		}
 		else {
-			AddQuad(v1, v2, v3, v4);
-			AddQuadColor(cell.color, neighbor.color);
+			//We need to stick the edges together but with each extra triangle we need an extra quad to seal them together.
+			TriangulateEdgeStrip(e1, cell.color, e2, neighbor.color);
 		}
 		
-		//The above leaves triangle holes, so we have to plug them.
+		//The actions above leave triangle holes between elevations, so we have to plug them.
 		HexCell nextNeighbor = cell.GetNeighbor(direction.Next());
 		if (direction <= HexDirection.E && nextNeighbor != null) {
 			//The third vertex is the hard one to find but each edge of the triangle connects to a bridge, so it was trial and error
@@ -99,28 +102,28 @@ public class HexMesh : MonoBehaviour {
 			//v5 is now part of the triangle too. It needs to be modified to account for our elevation otherwise we will find triangular
 			//holes for each elevation difference.
 			//With no change in elevation then we are basically just sending v2 to AddTriangle in place of v5.
-			Vector3 v5 = v2 + HexMetrics.GetBridge(direction.Next());
-			v5.y = nextNeighbor.Elevation * HexMetrics.elevationStep;
+			Vector3 v5 = e1.v4 + HexMetrics.GetBridge(direction.Next());
+			v5.y = nextNeighbor.Position.y;
 			
 			//With TriangulateCorner's creation we need to figure out which cell is the lowest. We only have 3 cells max.
 			if (cell.Elevation <= neighbor.Elevation) {
 				//if this check fails then the next neighbour is the lowest cell (we only have 2 neighbors).
 				if (cell.Elevation <= nextNeighbor.Elevation) {
-					TriangulateCorner(v2, cell, v4, neighbor, v5, nextNeighbor);
+					TriangulateCorner(e1.v4, cell, e2.v4, neighbor, v5, nextNeighbor);
 				}
 				else {
 					//We have to rotate the triangle counterclockwise to keep it correctly oriented.
-					TriangulateCorner(v5, nextNeighbor, v2, cell, v4, neighbor);
+					TriangulateCorner(v5, nextNeighbor, e1.v4, cell, e2.v4, neighbor);
 				}
 			}
 			//if the first check fails then it's a contest between the other two cells.
 			else if (neighbor.Elevation <= nextNeighbor.Elevation) {
 				//if the edge neighbour is lowest we rotate clockwise
-				TriangulateCorner(v4, neighbor, v5, nextNeighbor, v2, cell);
+				TriangulateCorner(e2.v4, neighbor, v5, nextNeighbor, e1.v4, cell);
 			}
 			else {
 				//otherwise we rotate counterclockwise.
-				TriangulateCorner(v5, nextNeighbor, v2, cell, v4, neighbor);
+				TriangulateCorner(v5, nextNeighbor, e1.v4, cell, e2.v4, neighbor);
 			}
 			
 			/*
@@ -131,35 +134,30 @@ public class HexMesh : MonoBehaviour {
 	}
 	
 	//Triangulating this stuff is becoming more and more complex so we this function is made to simplify.
+	//It used to be that we triangulated by being passed vertices but we are now doing it with edges
 	void TriangulateEdgeTerraces (
-	Vector3 beginLeft, Vector3 beginRight, HexCell beginCell,
-	Vector3 endLeft, Vector3 endRight, HexCell endCell
+		EdgeVertices begin, HexCell beginCell,
+		EdgeVertices end, HexCell endCell
 	) {
-		Vector3 v3 = HexMetrics.TerraceLerp(beginLeft, endLeft, 1);
-		Vector3 v4 = HexMetrics.TerraceLerp(beginRight, endRight, 1);
+		EdgeVertices e2 = EdgeVertices.TerraceLerp(begin, end, 1);
 		Color c2 = HexMetrics.TerraceLerp(beginCell.color, endCell.color, 1); //Remember we have two TerraceLerps. One does color, the other
 		//does the vectors.
 		
-		//The first step of the Terrace is established and colored here. We're going to for loop the steps in between but leave out
-		//the last step.
-		AddQuad(beginLeft, beginRight, v3, v4);
-		AddQuadColor(beginCell.color, c2);
+		//The first step of the Terrace is established and colored here. 
+		TriangulateEdgeStrip(begin, beginCell.color, e2, c2);
 		
 		//In each intermediate step, the previous last two vertices become the new first two.
 		for (int i = 2; i < HexMetrics.terraceSteps; i++) {
-			Vector3 v1 = v3;
-			Vector3 v2 = v4;
+			EdgeVertices e1 = e2;
 			Color c1 = c2;
-			v3 = HexMetrics.TerraceLerp(beginLeft, endLeft, i);
-			v4 = HexMetrics.TerraceLerp(beginRight, endRight, i);
+			e2 = EdgeVertices.TerraceLerp(begin, end, i); //TerraceLerp simply performs the terrace interpoplation
+			//between all four pairs of two edge vertices.
 			c2 = HexMetrics.TerraceLerp(beginCell.color, endCell.color, i);
-			AddQuad(v1, v2, v3, v4);
-			AddQuadColor(c1, c2);
+			TriangulateEdgeStrip(e1, c1, e2, c2);
 		}
 		
 		//The last step of the terrace.
-		AddQuad(v3, v4, endLeft, endRight);
-		AddQuadColor(c2, endCell.color);
+		TriangulateEdgeStrip(e2, c2, end, endCell.color);
 	}
 	
 	//With the new edge types there are a lot of possible variations on the corners.
@@ -272,7 +270,7 @@ public class HexMesh : MonoBehaviour {
 			b = -b;
 		}
 		
-		Vector3 boundary = Vector3.Lerp(begin, right, b);
+		Vector3 boundary = Vector3.Lerp(Perturb(begin), Perturb(right), b);
 		Color boundaryColor = Color.Lerp(beginCell.color, rightCell.color, b);
 		
 		//This creates the bottom series of terrace steps. Our top triangle is a slope.
@@ -287,35 +285,52 @@ public class HexMesh : MonoBehaviour {
 			);
 		}
 		else {
-			AddTriangle(left, right, boundary);
+			AddTriangleUnperturbed(Perturb(left), Perturb(right), boundary);
 			AddTriangleColor(leftCell.color, rightCell.color, boundaryColor);
 		}
 	}
 	
+	//A boundary triangle is a triangle that tries to seal the hole that appears when a cliff and terraced slope
+	//are right next to each other
 	void TriangulateBoundaryTriangle (
 		Vector3 begin, HexCell beginCell,
 		Vector3 left, HexCell leftCell,
 		Vector3 boundary, Color boundaryColor
 	) {
-		Vector3 v2 = HexMetrics.TerraceLerp(begin, left, 1);
+		//We perturb v2 ahead of time for optimization. We don't use v2 to derive any other point so it is safe to do this
+		//beforehand but not safe to do it with anything else.
+		Vector3 v2 = Perturb(HexMetrics.TerraceLerp(begin, left, 1));
 		Color c2 = HexMetrics.TerraceLerp(beginCell.color, leftCell.color, 1);
 		
 		//First triangle step of the terrace
-		AddTriangle(begin, v2, boundary);
+		AddTriangleUnperturbed(Perturb(begin), v2, boundary);
 		AddTriangleColor(beginCell.color, c2, boundaryColor);
 		
 		for (int i = 2; i < HexMetrics.terraceSteps; i++) {
 			Vector3 v1 = v2;
 			Color c1 = c2;
-			v2 = HexMetrics.TerraceLerp(begin, left, i);
+			v2 = Perturb(HexMetrics.TerraceLerp(begin, left, i));
 			c2 = HexMetrics.TerraceLerp(beginCell.color, leftCell.color, i);
-			AddTriangle(v1, v2, boundary);
+			AddTriangleUnperturbed(v1, v2, boundary);
 			AddTriangleColor(c1, c2, boundaryColor);
 		}
 		
 		//Last step, but this time it is a triangle.
-		AddTriangle(v2, left, boundary);
+		AddTriangleUnperturbed(v2, Perturb(left), boundary);
 		AddTriangleColor(c2, leftCell.color, boundaryColor);
+	}
+	
+	//Create a triangle that is not effected by perturbance. We need this because otherwise we make holes
+	//when Terrace Slopes and Cliffs meet.
+	//Used mainly in TriangulateBoundaryTriangle
+	void AddTriangleUnperturbed (Vector3 v1, Vector3 v2, Vector3 v3) {
+		int vertexIndex = vertices.Count;
+		vertices.Add(v1);
+		vertices.Add(v2);
+		vertices.Add(v3);
+		triangles.Add(vertexIndex);
+		triangles.Add(vertexIndex + 1);
+		triangles.Add(vertexIndex + 2);
 	}
 	
 	//This is the mirror case with the cliff on the left
@@ -331,7 +346,7 @@ public class HexMesh : MonoBehaviour {
 			b = -b;
 		}
 		
-		Vector3 boundary = Vector3.Lerp(begin, left, b);
+		Vector3 boundary = Vector3.Lerp(Perturb(begin), Perturb(left), b);
 		Color boundaryColor = Color.Lerp(beginCell.color, leftCell.color, b);
 
 		TriangulateBoundaryTriangle(
@@ -344,7 +359,7 @@ public class HexMesh : MonoBehaviour {
 			);
 		}
 		else {
-			AddTriangle(left, right, boundary);
+			AddTriangleUnperturbed(Perturb(left), Perturb(right), boundary);
 			AddTriangleColor(leftCell.color, rightCell.color, boundaryColor);
 		}
 	}
@@ -365,9 +380,9 @@ public class HexMesh : MonoBehaviour {
     
     void AddTriangle (Vector3 v1, Vector3 v2, Vector3 v3) {
 		int vertexIndex = vertices.Count;
-		vertices.Add(v1);
-		vertices.Add(v2);
-		vertices.Add(v3);
+		vertices.Add(Perturb(v1));
+		vertices.Add(Perturb(v2));
+		vertices.Add(Perturb(v3));
 		triangles.Add(vertexIndex);
 		triangles.Add(vertexIndex + 1);
 		triangles.Add(vertexIndex + 2);
@@ -376,10 +391,10 @@ public class HexMesh : MonoBehaviour {
 	//The four vertices of AddQuad should outline a trapezoid that encompasses the bottom (wider) part of the triangle.
 	void AddQuad (Vector3 v1, Vector3 v2, Vector3 v3, Vector3 v4) {
 		int vertexIndex = vertices.Count;
-		vertices.Add(v1);
-		vertices.Add(v2);
-		vertices.Add(v3);
-		vertices.Add(v4);
+		vertices.Add(Perturb(v1));
+		vertices.Add(Perturb(v2));
+		vertices.Add(Perturb(v3));
+		vertices.Add(Perturb(v4));
 		//Add the indexes for the vertices to the triangles list. 
 		//The addition of a whole number to each vertex index is what arranges the triangle correctly in the eyes of the computer.
 		triangles.Add(vertexIndex);
@@ -403,5 +418,39 @@ public class HexMesh : MonoBehaviour {
 		colors.Add(c1);
 		colors.Add(c2);
 		colors.Add(c2);
+	}
+	
+	//This just simplifies what we're doing with our extra triangles.
+	//Instead of finding the inbetween triangles each and every time, we use EdgeVertices's constructor
+	//to lerp for the vertices to make 3 triangles for every single triangle in the hexagon.
+	void TriangulateEdgeFan (Vector3 center, EdgeVertices edge, Color color) {
+		AddTriangle(center, edge.v1, edge.v2);
+		AddTriangleColor(color);
+		AddTriangle(center, edge.v2, edge.v3);
+		AddTriangleColor(color);
+		AddTriangle(center, edge.v3, edge.v4);
+		AddTriangleColor(color);
+	}
+	
+	void TriangulateEdgeStrip (
+		EdgeVertices e1, Color c1,
+		EdgeVertices e2, Color c2
+	) {
+		AddQuad(e1.v1, e1.v2, e2.v1, e2.v2);
+		AddQuadColor(c1, c2);
+		AddQuad(e1.v2, e1.v3, e2.v2, e2.v3);
+		AddQuadColor(c1, c2);
+		AddQuad(e1.v3, e1.v4, e2.v3, e2.v4);
+		AddQuadColor(c1, c2);
+	}
+	
+	Vector3 Perturb (Vector3 position) {
+		Vector4 sample = HexMetrics.SampleNoise(position);
+		//that * 2f - 1f part centers our perturbance on the position, allowing it to perturb up or down.
+		//before, with just += sample.x we would only perturb up.
+		position.x += (sample.x * 2f - 1f) * HexMetrics.cellPerturbStrength;
+		//position.y += (sample.x * 2f - 1f) * HexMetrics.cellPerturbStrength;
+		position.z += (sample.x * 2f - 1f) * HexMetrics.cellPerturbStrength;
+		return position;
 	}
 }

@@ -19,7 +19,13 @@ public class HexGrid : MonoBehaviour {
 	
 	HexMesh hexMesh;
 	
+	public Texture2D noiseSource; //Our noise is not a component so we can't assign it through our editor.
+	//As such, we are going to use HexGrid to do it for us. It is the first to act so we'll pass it to our Awake method.
+	
 	void Awake () {
+		HexMetrics.noiseSource = noiseSource; //The very first thing we do is establish HexMetric's noiseSource using
+		//this script HexGrid as the go-between.
+		
 		gridCanvas = GetComponentInChildren<Canvas>();
 		hexMesh = GetComponentInChildren<HexMesh>();
 		
@@ -35,6 +41,12 @@ public class HexGrid : MonoBehaviour {
 	void Start () {
 		hexMesh.Triangulate(cells); //We must triangulate the cells ONLY after the hex mesh components have awoken as well.
 		//We'll keep things in Start to ensure that occurs.
+	}
+	
+	//Keeping hte noiseSource in Awake will mean it won't survive recompiles in play mode. Enable will be invoked after
+	//a recompilation so we don't need to go searching for that if a bug occurs.
+	void OnEnable () {
+		HexMetrics.noiseSource = noiseSource;
 	}
 	
 	public HexCell GetCell (Vector3 position) {
@@ -96,6 +108,8 @@ public class HexGrid : MonoBehaviour {
 		label.text = cell.coordinates.ToStringOnSeparateLines();
 		
 		cell.uiRect = label.rectTransform;
+		
+		cell.Elevation = 0;
 	}
 	
 }

@@ -6,6 +6,7 @@ MonoImporter:
   defaultReferences:
   - cellPrefab: {fileID: 3839177566641503359, guid: 45ce84caaaa61fa41941067747c0007e, type: 3}
   - cellLabelPrefab: {fileID: 5238742896141104811, guid: 2b3f2bb44d1b88644891dfebe695e379, type: 3}
+  - noiseSource: {fileID: 2800000, guid: 78d86c30e528d214887732d46e36ba71, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}
   userData: 

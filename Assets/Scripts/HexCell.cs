@@ -27,11 +27,14 @@ public class HexCell : MonoBehaviour {
             Vector3 position = transform.localPosition;
 			position.y = value * HexMetrics.elevationStep; //Our new y position is a combo of the value given by the slider
             //and how large each step of value is supposed to be.
+			position.y +=
+				(HexMetrics.SampleNoise(position).y * 2f - 1f) *
+				HexMetrics.elevationPerturbStrength; //Apply perturbance to the cell's vertical position
 			transform.localPosition = position;
             
             //Expanding our set elevation section to raise our coordinate label to stay on top of the
             Vector3 uiPosition = uiRect.localPosition;
-			uiPosition.z = elevation * -HexMetrics.elevationStep;
+			uiPosition.z = -position.y; //With our final perturbance stored we can now place the label correctly.
 			uiRect.localPosition = uiPosition;
 		}
 	}
@@ -56,5 +59,11 @@ public class HexCell : MonoBehaviour {
 		return HexMetrics.GetEdgeType(
 			elevation, otherCell.elevation
 		);
+	}
+	
+	public Vector3 Position {
+		get {
+			return transform.localPosition;
+		}
 	}
 }

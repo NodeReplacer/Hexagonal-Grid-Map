@@ -1715,8 +1715,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   colors:
-  - {r: 1, g: 0.99106956, b: 0, a: 0}
-  - {r: 0, g: 1, b: 0.25714278, a: 0}
+  - {r: 0.8207091, g: 0.8207547, b: 0, a: 0}
+  - {r: 0, g: 0.8018868, b: 0.09633243, a: 0}
   - {r: 0, g: 0.22047567, b: 1, a: 0}
   - {r: 1, g: 1, b: 1, a: 0}
   hexGrid: {fileID: 1763302176}
@@ -2144,6 +2144,7 @@ MonoBehaviour:
   touchedColor: {r: 1, g: 0, b: 1, a: 1}
   cellPrefab: {fileID: 3839177566641503359, guid: 45ce84caaaa61fa41941067747c0007e, type: 3}
   cellLabelPrefab: {fileID: 5238742896141104811, guid: 2b3f2bb44d1b88644891dfebe695e379, type: 3}
+  noiseSource: {fileID: 2800000, guid: 78d86c30e528d214887732d46e36ba71, type: 3}
 --- !u!1 &1883929931
 GameObject:
   m_ObjectHideFlags: 0

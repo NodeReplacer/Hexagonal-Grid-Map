@@ -5,27 +5,24 @@ public static class HexMetrics {
     
     //Hexagons have two radii. The first is measured from a corner and the second is measured from the middle of
     //an edge. The middle of the edge radius (inner radius) is shorter.
-    
 	public const float outerRadius = 10f;
-
 	public const float innerRadius = outerRadius * 0.866025404f;
-    
-	public const float solidFactor = 0.75f;
-	
+	public const float solidFactor = 0.8f;
 	public const float blendFactor = 1f - solidFactor;
-	
-	public const float elevationStep = 5f;
+	public const float elevationStep = 3f;
 	
 	//Instead of a straight slope we will create a terraced/stepped land.
 	public const int terracesPerSlope = 2;
-
 	public const int terraceSteps = terracesPerSlope * 2 + 1;
-	
-	//For Horizontal interpolation. Straightforward if we know what the size of the step is.
-	public const float horizontalTerraceStepSize = 1f / terraceSteps;
-	
-	//
+	public const float horizontalTerraceStepSize = 1f / terraceSteps;//For Horizontal interpolation. 
+	//Straightforward if we know what the size of the step is.
 	public const float verticalTerraceStepSize = 1f / (terracesPerSlope + 1);
+	public static Texture2D noiseSource; //do a bit of noise randomization to make the terrain more visually interesting.
+	public const float cellPerturbStrength = 4f;
+	public const float noiseScale = 0.003f; //Why scale the noise? Because without the scale fitting the entire map the
+	//noise will destroy our terraces, steps, slopes, and other elevation differences.
+	public const float elevationPerturbStrength = 1.5f; //We're choosing to perturb vertically per cell instead of on each vertex.
+	//This means each cell will remain flat but with variation between cells.
 	
     static Vector3[] corners = {
 		new Vector3(0f, 0f, outerRadius), //This makes it top corner up.
@@ -91,5 +88,15 @@ public static class HexMetrics {
 			return HexEdgeType.Slope;
 		}
 		return HexEdgeType.Cliff;
+	}
+	
+	//Taking a given position in world space we bilinear filter it using x and z as UV coordinates.
+	//this will return a color at whatever pixel we were pointed to. Remembering that the colours of our noise are
+	//nonsense other than the fact that each color represent 4 values.
+	public static Vector4 SampleNoise (Vector3 position) {
+		return noiseSource.GetPixelBilinear(
+			position.x * noiseScale,
+			position.z * noiseScale
+		);
 	}
 }
